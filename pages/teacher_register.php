@@ -17,7 +17,7 @@ $success_message = '';
 
 // 업체 정보 확인
 $business_stmt = $db->prepare("
-    SELECT b.* 
+    SELECT b.*, bo.id as owner_id
     FROM businesses b 
     JOIN business_owners bo ON b.owner_id = bo.id 
     WHERE bo.user_id = ?
@@ -30,13 +30,27 @@ if (!$business) {
     exit;
 }
 
+// 업체의 세부 카테고리 가져오기
+$available_specialties = [];
+if ($business['subcategories']) {
+    $subcategories = json_decode($business['subcategories'], true);
+    if (is_array($subcategories)) {
+        $available_specialties = $subcategories;
+    }
+}
+
+// 기본 카테고리도 추가
+$main_category = $business['category'];
+if (!in_array($main_category, $available_specialties)) {
+    array_unshift($available_specialties, $main_category);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
-    $password = $_POST['password'] ?? '';
-    $specialty = trim($_POST['specialty'] ?? '');
-    $career = trim($_POST['career'] ?? '');
+    $specialties = $_POST['specialties'] ?? [];
+    $experience_years = (int)($_POST['experience_years'] ?? 0);
     $introduction = trim($_POST['introduction'] ?? '');
     
     // 유효성 검사
@@ -49,8 +63,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($phone)) {
         $errors[] = '전화번호를 입력해주세요.';
     }
-    if (empty($password)) {
-        $errors[] = '비밀번호를 입력해주세요.';
+    if (empty($specialties)) {
+        $errors[] = '전문분야를 하나 이상 선택해주세요.';
     }
     
     // 이메일 중복 체크
@@ -66,14 +80,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $db->beginTransaction();
             
-            // 사용자 계정 생성
+            // 사용자 계정 생성 (패스워드는 임시로 생성)
+            $temp_password = substr(str_shuffle('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'), 0, 12);
             $user_stmt = $db->prepare("
                 INSERT INTO users (email, password, name, phone, user_type, is_active) 
                 VALUES (?, ?, ?, ?, 'teacher', 1)
             ");
             $user_stmt->execute([
                 $email,
-                password_hash($password, PASSWORD_DEFAULT),
+                password_hash($temp_password, PASSWORD_DEFAULT),
                 $name,
                 $phone
             ]);
@@ -81,20 +96,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $user_id = $db->lastInsertId();
             
             // 선생님 정보 저장
+            $specialties_json = json_encode($specialties);
             $teacher_stmt = $db->prepare("
-                INSERT INTO teachers (user_id, business_id, specialty, career, introduction, is_active, is_approved) 
+                INSERT INTO teachers (user_id, business_id, specialties, experience_years, introduction, is_active, is_approved) 
                 VALUES (?, ?, ?, ?, ?, 1, 1)
             ");
             $teacher_stmt->execute([
                 $user_id,
                 $business['id'],
-                $specialty,
-                $career,
+                $specialties_json,
+                $experience_years,
                 $introduction
             ]);
             
             $db->commit();
-            $success_message = '선생님이 성공적으로 등록되었습니다.';
+            $success_message = '선생님이 성공적으로 등록되었습니다. 임시 비밀번호가 생성되었습니다: ' . $temp_password;
             
             // 폼 초기화
             $_POST = [];
@@ -143,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     color: #333;
 }
 
-.form-input, .form-textarea {
+.form-input, .form-textarea, .form-select {
     width: 100%;
     padding: 12px 15px;
     border: 2px solid #e1e5e9;
@@ -152,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     transition: border-color 0.3s;
 }
 
-.form-input:focus, .form-textarea:focus {
+.form-input:focus, .form-textarea:focus, .form-select:focus {
     outline: none;
     border-color: #ff4757;
 }
@@ -160,6 +176,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 .form-textarea {
     resize: vertical;
     min-height: 100px;
+}
+
+.specialty-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.specialty-option {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.specialty-option:hover {
+    border-color: #ff4757;
+    background-color: #fff5f5;
+}
+
+.specialty-option input[type="checkbox"] {
+    margin-right: 10px;
+}
+
+.specialty-option.selected {
+    border-color: #ff4757;
+    background-color: #fff5f5;
 }
 
 .submit-btn {
@@ -207,6 +254,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     margin-bottom: 20px;
     display: inline-block;
 }
+
+.temp-password {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 10px;
+    color: #856404;
+    font-weight: bold;
+}
 </style>
 
 <div class="teacher-register-container">
@@ -230,6 +287,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if ($success_message): ?>
         <div class="alert alert-success">
             <?= htmlspecialchars($success_message) ?>
+            <div class="temp-password">
+                <strong>주의:</strong> 선생님에게 임시 비밀번호를 전달하고, 첫 로그인 시 비밀번호를 변경하도록 안내해주세요.
+            </div>
         </div>
     <?php endif; ?>
 
@@ -255,22 +315,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             
             <div class="form-group">
-                <label class="form-label">비밀번호 *</label>
-                <input type="password" name="password" class="form-input" required>
+                <label class="form-label">전문분야 * (복수 선택 가능)</label>
+                <div class="specialty-options">
+                    <?php foreach ($available_specialties as $specialty): ?>
+                        <label class="specialty-option">
+                            <input type="checkbox" name="specialties[]" value="<?= htmlspecialchars($specialty) ?>"
+                                   <?= (isset($_POST['specialties']) && in_array($specialty, $_POST['specialties'])) ? 'checked' : '' ?>>
+                            <?= htmlspecialchars($specialty) ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <small class="text-muted">업체의 카테고리에 등록된 분야만 선택 가능합니다.</small>
             </div>
             
             <div class="form-group">
-                <label class="form-label">전문분야</label>
-                <input type="text" name="specialty" class="form-input" 
-                       value="<?= htmlspecialchars($_POST['specialty'] ?? '') ?>" 
-                       placeholder="예: 네일아트, 헤어컷, 피부관리">
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">경력</label>
-                <input type="text" name="career" class="form-input" 
-                       value="<?= htmlspecialchars($_POST['career'] ?? '') ?>" 
-                       placeholder="예: 5년차, OO아카데미 수료">
+                <label class="form-label">경력 (년)</label>
+                <select name="experience_years" class="form-select">
+                    <option value="0" <?= ($_POST['experience_years'] ?? 0) == 0 ? 'selected' : '' ?>>신입</option>
+                    <?php for ($i = 1; $i <= 20; $i++): ?>
+                        <option value="<?= $i ?>" <?= ($_POST['experience_years'] ?? 0) == $i ? 'selected' : '' ?>><?= $i ?>년</option>
+                    <?php endfor; ?>
+                    <option value="21" <?= ($_POST['experience_years'] ?? 0) > 20 ? 'selected' : '' ?>>20년 이상</option>
+                </select>
             </div>
             
             <div class="form-group">
@@ -283,5 +349,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </form>
 </div>
+
+<script>
+// 체크박스 선택 시 스타일 변경
+document.addEventListener('DOMContentLoaded', function() {
+    const checkboxes = document.querySelectorAll('.specialty-option input[type="checkbox"]');
+    
+    checkboxes.forEach(checkbox => {
+        const option = checkbox.closest('.specialty-option');
+        
+        function updateStyle() {
+            if (checkbox.checked) {
+                option.classList.add('selected');
+            } else {
+                option.classList.remove('selected');
+            }
+        }
+        
+        updateStyle(); // 초기 상태 설정
+        checkbox.addEventListener('change', updateStyle);
+    });
+});
+</script>
 
 <?php require_once '../includes/footer.php'; ?> 
