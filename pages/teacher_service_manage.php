@@ -3,8 +3,8 @@ session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
-// ?체관리자 권한 ?인
-if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'business_owner') {
+// 선생님 권한 확인
+if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'teacher') {
     header('Location: login.php');
     exit;
 }
@@ -12,85 +12,124 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'business_owner')
 $user_id = $_SESSION['user_id'];
 $db = getDB();
 
-// ?체 ?보 조회
-$stmt = $db->prepare("SELECT * FROM businesses WHERE owner_id = ?");
+// 선생님 정보 조회
+$stmt = $db->prepare("
+    SELECT t.*, u.name, b.name as business_name, b.category, b.subcategories
+    FROM teachers t
+    JOIN users u ON t.user_id = u.id
+    JOIN businesses b ON t.business_id = b.id
+    WHERE t.user_id = ?
+");
 $stmt->execute([$user_id]);
-$business = $stmt->fetch();
+$teacher = $stmt->fetch();
 
-if (!$business) {
-    header('Location: business_register.php');
+if (!$teacher) {
+    header('Location: login.php');
     exit;
 }
 
-$business_id = $business['id'];
+$teacher_id = $teacher['id'];
+$business_id = $teacher['business_id'];
 
-// ?비??추?/?정 처리
+// 업체 카테고리 정의
+$business_categories = [
+    'nail' => '네일',
+    'hair' => '헤어',
+    'waxing' => '왁싱',
+    'skincare' => '피부관리',
+    'eyebrow' => '속눈썹/눈썹',
+    'massage' => '마사지',
+    'makeup' => '메이크업',
+    'total' => '토탈뷰티'
+];
+
+// 선생님의 전문분야 파싱
+$teacher_specialties = [];
+if ($teacher['specialty']) {
+    $specialties = json_decode($teacher['specialty'], true);
+    if ($specialties) {
+        foreach ($specialties as $specialty) {
+            if (isset($business_categories[$specialty])) {
+                $teacher_specialties[$specialty] = $business_categories[$specialty];
+            }
+        }
+    }
+}
+
+// 서비스 추가/수정/삭제 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if (isset($_POST['action'])) {
             if ($_POST['action'] === 'add') {
                 $stmt = $db->prepare("
-                    INSERT INTO business_services (business_id, service_name, description, price, duration, category, is_active)
-                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                    INSERT INTO teacher_services (teacher_id, business_id, service_name, description, category, price_type, price_min, price_max, duration_min, duration_max, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 ");
                 $stmt->execute([
+                    $teacher_id,
                     $business_id,
                     $_POST['service_name'],
                     $_POST['description'],
-                    $_POST['price'],
-                    $_POST['duration'],
-                    $_POST['category']
+                    $_POST['category'],
+                    $_POST['price_type'],
+                    $_POST['price_min'],
+                    $_POST['price_max'] ?: null,
+                    $_POST['duration_min'],
+                    $_POST['duration_max'] ?: null
                 ]);
                 $success_message = "서비스가 성공적으로 추가되었습니다.";
                 
             } elseif ($_POST['action'] === 'edit') {
                 $stmt = $db->prepare("
-                    UPDATE business_services 
-                    SET service_name = ?, description = ?, price = ?, duration = ?, category = ?
-                    WHERE id = ? AND business_id = ?
+                    UPDATE teacher_services 
+                    SET service_name = ?, description = ?, category = ?, price_type = ?, price_min = ?, price_max = ?, duration_min = ?, duration_max = ?
+                    WHERE id = ? AND teacher_id = ?
                 ");
                 $stmt->execute([
                     $_POST['service_name'],
                     $_POST['description'],
-                    $_POST['price'],
-                    $_POST['duration'],
                     $_POST['category'],
+                    $_POST['price_type'],
+                    $_POST['price_min'],
+                    $_POST['price_max'] ?: null,
+                    $_POST['duration_min'],
+                    $_POST['duration_max'] ?: null,
                     $_POST['service_id'],
-                    $business_id
+                    $teacher_id
                 ]);
                 $success_message = "서비스가 성공적으로 수정되었습니다.";
                 
             } elseif ($_POST['action'] === 'toggle_status') {
                 $stmt = $db->prepare("
-                    UPDATE business_services 
+                    UPDATE teacher_services 
                     SET is_active = ? 
-                    WHERE id = ? AND business_id = ?
+                    WHERE id = ? AND teacher_id = ?
                 ");
                 $stmt->execute([
                     $_POST['status'],
                     $_POST['service_id'],
-                    $business_id
+                    $teacher_id
                 ]);
                 $success_message = "서비스 상태가 변경되었습니다.";
                 
             } elseif ($_POST['action'] === 'delete') {
-                // ?약???는지 ?인
+                // 예약이 있는지 확인
                 $stmt = $db->prepare("
                     SELECT COUNT(*) as count 
                     FROM reservations 
-                    WHERE service_id = ? AND status IN ('pending', 'confirmed')
+                    WHERE teacher_id = ? AND status IN ('pending', 'confirmed')
                 ");
-                $stmt->execute([$_POST['service_id']]);
+                $stmt->execute([$teacher_id]);
                 $active_reservations = $stmt->fetch()['count'];
                 
                 if ($active_reservations > 0) {
                     $error_message = "진행 중인 예약이 있는 서비스는 삭제할 수 없습니다.";
                 } else {
                     $stmt = $db->prepare("
-                        DELETE FROM business_services 
-                        WHERE id = ? AND business_id = ?
+                        DELETE FROM teacher_services 
+                        WHERE id = ? AND teacher_id = ?
                     ");
-                    $stmt->execute([$_POST['service_id'], $business_id]);
+                    $stmt->execute([$_POST['service_id'], $teacher_id]);
                     $success_message = "서비스가 삭제되었습니다.";
                 }
             }
@@ -100,33 +139,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ?비??목록 조회
+// 서비스 목록 조회
 $stmt = $db->prepare("
-    SELECT bs.*, 
+    SELECT ts.*, 
            COUNT(r.id) as total_reservations,
            COUNT(CASE WHEN r.status IN ('pending', 'confirmed') THEN 1 END) as active_reservations,
            AVG(rv.service_rating) as avg_rating
-    FROM business_services bs
-    LEFT JOIN reservations r ON bs.id = r.service_id
+    FROM teacher_services ts
+    LEFT JOIN reservations r ON ts.teacher_id = r.teacher_id
     LEFT JOIN reviews rv ON r.id = rv.reservation_id
-    WHERE bs.business_id = ?
-    GROUP BY bs.id
-    ORDER BY bs.created_at DESC
+    WHERE ts.teacher_id = ?
+    GROUP BY ts.id
+    ORDER BY ts.created_at DESC
 ");
-$stmt->execute([$business_id]);
+$stmt->execute([$teacher_id]);
 $services = $stmt->fetchAll();
-
-// 카테고리 목록
-$categories = [
-    'nail' => '네일',
-    'hair' => '헤어',
-    'waxing' => '왁싱',
-    'skincare' => '피부관리',
-    'massage' => '마사지',
-    'makeup' => '메이크업',
-    'tanning' => '태닝',
-    'pedicure' => '페디큐어'
-];
 
 include '../includes/header.php';
 ?>
@@ -136,16 +163,18 @@ include '../includes/header.php';
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h2><i class="fas fa-cut text-primary"></i> 서비스 관리</h2>
-                    <p class="text-muted"><?= htmlspecialchars($business['name']) ?></p>
+                    <h2><i class="fas fa-cut text-primary"></i> 내 서비스 관리</h2>
+                    <p class="text-muted"><?= htmlspecialchars($teacher['name']) ?> 선생님 - <?= htmlspecialchars($teacher['business_name']) ?></p>
                 </div>
                 <div>
-                    <a href="business_dashboard.php" class="btn btn-outline-secondary">
-                        <i class="fas fa-arrow-left"></i> 대시보드
+                    <a href="teacher_mypage.php" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> 마이페이지
                     </a>
-                    <button class="btn btn-primary" data-toggle="modal" data-target="#addServiceModal">
-                        <i class="fas fa-plus"></i> 서비스 추가
-                    </button>
+                    <?php if (!empty($teacher_specialties)): ?>
+                        <button class="btn btn-primary" data-toggle="modal" data-target="#addServiceModal">
+                            <i class="fas fa-plus"></i> 서비스 추가
+                        </button>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -165,7 +194,28 @@ include '../includes/header.php';
         </div>
     <?php endif; ?>
 
-    <!-- ?계 카드 -->
+    <!-- 전문분야 정보 -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-star text-warning"></i> 내 전문분야</h5>
+        </div>
+        <div class="card-body">
+            <?php if (!empty($teacher_specialties)): ?>
+                <div class="d-flex flex-wrap gap-2">
+                    <?php foreach ($teacher_specialties as $key => $name): ?>
+                        <span class="badge badge-primary badge-lg"><?= $name ?></span>
+                    <?php endforeach; ?>
+                </div>
+                <small class="text-muted mt-2 d-block">이 전문분야에 해당하는 서비스만 등록할 수 있습니다.</small>
+            <?php else: ?>
+                <div class="alert alert-warning mb-0">
+                    전문분야가 설정되지 않았습니다. 업체 관리자에게 문의하세요.
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- 통계 카드 -->
     <div class="row mb-4">
         <div class="col-md-3">
             <div class="card bg-primary text-white">
@@ -173,7 +223,7 @@ include '../includes/header.php';
                     <div class="d-flex justify-content-between">
                         <div>
                             <h4><?= count($services) ?></h4>
-                            <p class="mb-0">전체 서비스</p>
+                            <p class="mb-0">등록된 서비스</p>
                         </div>
                         <div>
                             <i class="fas fa-cut fa-2x"></i>
@@ -218,13 +268,21 @@ include '../includes/header.php';
                     <div class="d-flex justify-content-between">
                         <div>
                             <?php 
-                            $avg_price = count($services) > 0 ? array_sum(array_column($services, 'price')) / count($services) : 0;
+                            $avg_rating = 0;
+                            $rating_count = 0;
+                            foreach ($services as $service) {
+                                if ($service['avg_rating']) {
+                                    $avg_rating += $service['avg_rating'];
+                                    $rating_count++;
+                                }
+                            }
+                            $overall_rating = $rating_count > 0 ? $avg_rating / $rating_count : 0;
                             ?>
-                            <h4><?= number_format($avg_price) ?>원</h4>
-                            <p class="mb-0">평균 가격</p>
+                            <h4><?= number_format($overall_rating, 1) ?></h4>
+                            <p class="mb-0">평균 평점</p>
                         </div>
                         <div>
-                            <i class="fas fa-won-sign fa-2x"></i>
+                            <i class="fas fa-star fa-2x"></i>
                         </div>
                     </div>
                 </div>
@@ -232,10 +290,10 @@ include '../includes/header.php';
         </div>
     </div>
 
-    <!-- ?비??목록 -->
+    <!-- 서비스 목록 -->
     <div class="card shadow">
         <div class="card-header">
-            <h5 class="mb-0">서비스 목록</h5>
+            <h5 class="mb-0">내 서비스 목록</h5>
         </div>
         <div class="card-body">
             <?php if (empty($services)): ?>
@@ -243,9 +301,11 @@ include '../includes/header.php';
                     <i class="fas fa-cut fa-3x text-muted mb-3"></i>
                     <h5 class="text-muted">등록된 서비스가 없습니다</h5>
                     <p class="text-muted">첫 번째 서비스를 추가해보세요!</p>
-                    <button class="btn btn-primary" data-toggle="modal" data-target="#addServiceModal">
-                        <i class="fas fa-plus"></i> 서비스 추가하기
-                    </button>
+                    <?php if (!empty($teacher_specialties)): ?>
+                        <button class="btn btn-primary" data-toggle="modal" data-target="#addServiceModal">
+                            <i class="fas fa-plus"></i> 서비스 추가하기
+                        </button>
+                    <?php endif; ?>
                 </div>
             <?php else: ?>
                 <div class="table-responsive">
@@ -275,13 +335,23 @@ include '../includes/header.php';
                                 </td>
                                 <td>
                                     <span class="badge badge-secondary">
-                                        <?= $categories[$service['category']] ?? $service['category'] ?>
+                                        <?= $teacher_specialties[$service['category']] ?? $service['category'] ?>
                                     </span>
                                 </td>
                                 <td>
-                                    <strong class="text-primary"><?= number_format($service['price']) ?>원</strong>
+                                    <?php if ($service['price_type'] === 'fixed'): ?>
+                                        <strong class="text-primary"><?= number_format($service['price_min']) ?>원</strong>
+                                    <?php else: ?>
+                                        <strong class="text-primary"><?= number_format($service['price_min']) ?>원 ~ <?= number_format($service['price_max']) ?>원</strong>
+                                    <?php endif; ?>
                                 </td>
-                                <td><?= $service['duration'] ?>분</td>
+                                <td>
+                                    <?php if ($service['duration_max'] && $service['duration_max'] != $service['duration_min']): ?>
+                                        <?= $service['duration_min'] ?>분 ~ <?= $service['duration_max'] ?>분
+                                    <?php else: ?>
+                                        <?= $service['duration_min'] ?>분
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <span class="badge badge-info"><?= $service['total_reservations'] ?>건</span>
                                     <?php if ($service['active_reservations'] > 0): ?>
@@ -335,7 +405,7 @@ include '../includes/header.php';
     </div>
 </div>
 
-<!-- ?비??추? 모달 -->
+<!-- 서비스 추가 모달 -->
 <div class="modal fade" id="addServiceModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -359,7 +429,7 @@ include '../includes/header.php';
                                 <label>카테고리 <span class="text-danger">*</span></label>
                                 <select name="category" class="form-control" required>
                                     <option value="">선택하세요</option>
-                                    <?php foreach ($categories as $key => $name): ?>
+                                    <?php foreach ($teacher_specialties as $key => $name): ?>
                                         <option value="<?= $key ?>"><?= $name ?></option>
                                     <?php endforeach; ?>
                                 </select>
@@ -376,23 +446,43 @@ include '../includes/header.php';
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label>가격 (원) <span class="text-danger">*</span></label>
-                                <input type="number" name="price" class="form-control" min="0" required>
+                                <label>가격 타입 <span class="text-danger">*</span></label>
+                                <select name="price_type" class="form-control" onchange="togglePriceType(this)" required>
+                                    <option value="fixed">고정 가격</option>
+                                    <option value="range">가격 범위</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>최소 가격 (원) <span class="text-danger">*</span></label>
+                                <input type="number" name="price_min" class="form-control" min="0" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label>소요시간 (분) <span class="text-danger">*</span></label>
-                                <select name="duration" class="form-control" required>
-                                    <option value="">선택하세요</option>
-                                    <option value="30">30분</option>
-                                    <option value="60">1시간</option>
-                                    <option value="90">1시간 30분</option>
-                                    <option value="120">2시간</option>
-                                    <option value="150">2시간 30분</option>
-                                    <option value="180">3시간</option>
-                                    <option value="240">4시간</option>
-                                </select>
+                                <label>최대 가격 (원)</label>
+                                <input type="number" name="price_max" class="form-control" min="0" disabled>
+                                <small class="form-text text-muted">가격 범위 선택 시에만 입력</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>최소 소요시간 (분) <span class="text-danger">*</span></label>
+                                <input type="number" name="duration_min" class="form-control" min="15" step="15" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>최대 소요시간 (분)</label>
+                                <input type="number" name="duration_max" class="form-control" min="15" step="15">
+                                <small class="form-text text-muted">시간 범위가 있는 경우 입력</small>
                             </div>
                         </div>
                     </div>
@@ -406,7 +496,7 @@ include '../includes/header.php';
     </div>
 </div>
 
-<!-- ?�비???�정 모달 -->
+<!-- 서비스 수정 모달 -->
 <div class="modal fade" id="editServiceModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -431,7 +521,7 @@ include '../includes/header.php';
                                 <label>카테고리 <span class="text-danger">*</span></label>
                                 <select name="category" id="edit_category" class="form-control" required>
                                     <option value="">선택하세요</option>
-                                    <?php foreach ($categories as $key => $name): ?>
+                                    <?php foreach ($teacher_specialties as $key => $name): ?>
                                         <option value="<?= $key ?>"><?= $name ?></option>
                                     <?php endforeach; ?>
                                 </select>
@@ -447,23 +537,41 @@ include '../includes/header.php';
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label>가격 (원) <span class="text-danger">*</span></label>
-                                <input type="number" name="price" id="edit_price" class="form-control" min="0" required>
+                                <label>가격 타입 <span class="text-danger">*</span></label>
+                                <select name="price_type" id="edit_price_type" class="form-control" onchange="toggleEditPriceType(this)" required>
+                                    <option value="fixed">고정 가격</option>
+                                    <option value="range">가격 범위</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>최소 가격 (원) <span class="text-danger">*</span></label>
+                                <input type="number" name="price_min" id="edit_price_min" class="form-control" min="0" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label>소요시간 (분) <span class="text-danger">*</span></label>
-                                <select name="duration" id="edit_duration" class="form-control" required>
-                                    <option value="">선택하세요</option>
-                                    <option value="30">30분</option>
-                                    <option value="60">1시간</option>
-                                    <option value="90">1시간 30분</option>
-                                    <option value="120">2시간</option>
-                                    <option value="150">2시간 30분</option>
-                                    <option value="180">3시간</option>
-                                    <option value="240">4시간</option>
-                                </select>
+                                <label>최대 가격 (원)</label>
+                                <input type="number" name="price_max" id="edit_price_max" class="form-control" min="0">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>최소 소요시간 (분) <span class="text-danger">*</span></label>
+                                <input type="number" name="duration_min" id="edit_duration_min" class="form-control" min="15" step="15" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>최대 소요시간 (분)</label>
+                                <input type="number" name="duration_max" id="edit_duration_max" class="form-control" min="15" step="15">
                             </div>
                         </div>
                     </div>
@@ -478,13 +586,42 @@ include '../includes/header.php';
 </div>
 
 <script>
+function togglePriceType(select) {
+    const priceMaxInput = document.querySelector('input[name="price_max"]');
+    if (select.value === 'range') {
+        priceMaxInput.disabled = false;
+        priceMaxInput.required = true;
+    } else {
+        priceMaxInput.disabled = true;
+        priceMaxInput.required = false;
+        priceMaxInput.value = '';
+    }
+}
+
+function toggleEditPriceType(select) {
+    const priceMaxInput = document.getElementById('edit_price_max');
+    if (select.value === 'range') {
+        priceMaxInput.disabled = false;
+        priceMaxInput.required = true;
+    } else {
+        priceMaxInput.disabled = true;
+        priceMaxInput.required = false;
+        priceMaxInput.value = '';
+    }
+}
+
 function editService(service) {
     document.getElementById('edit_service_id').value = service.id;
     document.getElementById('edit_service_name').value = service.service_name;
     document.getElementById('edit_category').value = service.category;
     document.getElementById('edit_description').value = service.description || '';
-    document.getElementById('edit_price').value = service.price;
-    document.getElementById('edit_duration').value = service.duration;
+    document.getElementById('edit_price_type').value = service.price_type;
+    document.getElementById('edit_price_min').value = service.price_min;
+    document.getElementById('edit_price_max').value = service.price_max || '';
+    document.getElementById('edit_duration_min').value = service.duration_min;
+    document.getElementById('edit_duration_max').value = service.duration_max || '';
+    
+    toggleEditPriceType(document.getElementById('edit_price_type'));
     
     $('#editServiceModal').modal('show');
 }
@@ -504,7 +641,7 @@ function toggleServiceStatus(serviceId, status) {
 }
 
 function deleteService(serviceId) {
-    if (confirm('?�말�????�비?��? ??��?�시겠습?�까?\n??��???�비?�는 복구?????�습?�다.')) {
+    if (confirm('정말로 이 서비스를 삭제하시겠습니까?')) {
         const form = document.createElement('form');
         form.method = 'POST';
         form.innerHTML = `
@@ -515,19 +652,6 @@ function deleteService(serviceId) {
         form.submit();
     }
 }
-
-// ?�자 ?�력 ??천단??구분???�시
-document.addEventListener('DOMContentLoaded', function() {
-    const priceInputs = document.querySelectorAll('input[name="price"]');
-    priceInputs.forEach(function(input) {
-        input.addEventListener('input', function() {
-            // ?�자�??�기�?
-            let value = this.value.replace(/[^0-9]/g, '');
-            // 천단??구분??추�? (?�시??
-            this.setAttribute('data-formatted', value.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
-        });
-    });
-});
 </script>
 
-<?php include '../includes/footer.php'; ?> 
+<?php include '../includes/footer.php'; ?>

@@ -17,7 +17,7 @@ $success_message = '';
 
 // 업체 정보 확인
 $business_stmt = $db->prepare("
-    SELECT b.* 
+    SELECT b.*, b.category, b.subcategories 
     FROM businesses b 
     JOIN business_owners bo ON b.owner_id = bo.id 
     WHERE bo.user_id = ?
@@ -30,12 +30,41 @@ if (!$business) {
     exit;
 }
 
+// 업체 카테고리 정의
+$business_categories = [
+    'nail' => '네일',
+    'hair' => '헤어',
+    'waxing' => '왁싱',
+    'skincare' => '피부관리',
+    'eyebrow' => '속눈썹/눈썹',
+    'massage' => '마사지',
+    'makeup' => '메이크업',
+    'total' => '토탈뷰티'
+];
+
+// 업체의 서브카테고리 파싱
+$available_categories = [];
+if ($business['subcategories']) {
+    $subcategories = json_decode($business['subcategories'], true);
+    if ($subcategories) {
+        foreach ($subcategories as $category) {
+            if (isset($business_categories[$category])) {
+                $available_categories[$category] = $business_categories[$category];
+            }
+        }
+    }
+}
+
+// 메인 카테고리도 추가
+if (isset($business_categories[$business['category']])) {
+    $available_categories[$business['category']] = $business_categories[$business['category']];
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
-    $password = $_POST['password'] ?? '';
-    $specialty = trim($_POST['specialty'] ?? '');
+    $specialties = $_POST['specialties'] ?? []; // 다중 선택
     $career = trim($_POST['career'] ?? '');
     $introduction = trim($_POST['introduction'] ?? '');
     
@@ -49,8 +78,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($phone)) {
         $errors[] = '전화번호를 입력해주세요.';
     }
-    if (empty($password)) {
-        $errors[] = '비밀번호를 입력해주세요.';
+    if (empty($specialties)) {
+        $errors[] = '전문분야를 선택해주세요.';
     }
     
     // 이메일 중복 체크
@@ -66,6 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $db->beginTransaction();
             
+            // 임시 패스워드 생성 (초기 설정용)
+            $temp_password = 'temp' . rand(1000, 9999);
+            
             // 사용자 계정 생성
             $user_stmt = $db->prepare("
                 INSERT INTO users (email, password, name, phone, user_type, is_active) 
@@ -73,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $user_stmt->execute([
                 $email,
-                password_hash($password, PASSWORD_DEFAULT),
+                password_hash($temp_password, PASSWORD_DEFAULT),
                 $name,
                 $phone
             ]);
@@ -88,13 +120,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $teacher_stmt->execute([
                 $user_id,
                 $business['id'],
-                $specialty,
+                json_encode($specialties), // 다중 선택을 JSON으로 저장
                 $career,
                 $introduction
             ]);
             
             $db->commit();
-            $success_message = '선생님이 성공적으로 등록되었습니다.';
+            $success_message = '선생님이 성공적으로 등록되었습니다. 임시 패스워드는 ' . $temp_password . ' 입니다.';
             
             // 폼 초기화
             $_POST = [];
@@ -162,6 +194,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     min-height: 100px;
 }
 
+.specialty-checkbox {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.specialty-item {
+    display: flex;
+    align-items: center;
+    background: #f8f9fa;
+    padding: 8px 12px;
+    border-radius: 20px;
+    border: 2px solid #e9ecef;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.specialty-item:hover {
+    border-color: #ff4757;
+}
+
+.specialty-item input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.specialty-item input[type="checkbox"]:checked + label {
+    color: #ff4757;
+    font-weight: bold;
+}
+
 .submit-btn {
     background: linear-gradient(135deg, #ff4757, #ff6b7a);
     color: white;
@@ -207,6 +270,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     margin-bottom: 20px;
     display: inline-block;
 }
+
+.business-info {
+    background: #e3f2fd;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
 </style>
 
 <div class="teacher-register-container">
@@ -215,6 +285,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="register-header">
         <h1>선생님 등록</h1>
         <p><?= htmlspecialchars($business['name']) ?>에 새로운 선생님을 등록하세요</p>
+    </div>
+
+    <div class="business-info">
+        <h6>업체 정보</h6>
+        <p><strong>업체명:</strong> <?= htmlspecialchars($business['name']) ?></p>
+        <p><strong>주 업종:</strong> <?= $business_categories[$business['category']] ?? $business['category'] ?></p>
+        <p><strong>선택 가능한 전문분야:</strong> 
+            <?php if (!empty($available_categories)): ?>
+                <?= implode(', ', $available_categories) ?>
+            <?php else: ?>
+                <span class="text-danger">업체 정보에서 서브카테고리를 설정해주세요.</span>
+            <?php endif; ?>
+        </p>
     </div>
 
     <?php if (!empty($errors)): ?>
@@ -245,6 +328,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="form-label">이메일 *</label>
                 <input type="email" name="email" class="form-input" 
                        value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
+                <small class="text-muted">선생님이 로그인할 때 사용할 이메일입니다.</small>
             </div>
             
             <div class="form-group">
@@ -255,15 +339,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             
             <div class="form-group">
-                <label class="form-label">비밀번호 *</label>
-                <input type="password" name="password" class="form-input" required>
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">전문분야</label>
-                <input type="text" name="specialty" class="form-input" 
-                       value="<?= htmlspecialchars($_POST['specialty'] ?? '') ?>" 
-                       placeholder="예: 네일아트, 헤어컷, 피부관리">
+                <label class="form-label">전문분야 * (복수 선택 가능)</label>
+                <?php if (!empty($available_categories)): ?>
+                    <div class="specialty-checkbox">
+                        <?php foreach ($available_categories as $key => $name): ?>
+                            <div class="specialty-item">
+                                <input type="checkbox" name="specialties[]" value="<?= $key ?>" 
+                                       id="specialty_<?= $key ?>"
+                                       <?= in_array($key, $_POST['specialties'] ?? []) ? 'checked' : '' ?>>
+                                <label for="specialty_<?= $key ?>"><?= $name ?></label>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="alert alert-warning">
+                        업체 등록에서 서브카테고리를 먼저 설정해주세요.
+                    </div>
+                <?php endif; ?>
             </div>
             
             <div class="form-group">
@@ -279,7 +371,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                           placeholder="선생님을 소개해주세요"><?= htmlspecialchars($_POST['introduction'] ?? '') ?></textarea>
             </div>
             
-            <button type="submit" class="submit-btn">선생님 등록</button>
+            <?php if (!empty($available_categories)): ?>
+                <button type="submit" class="submit-btn">선생님 등록</button>
+            <?php endif; ?>
         </div>
     </form>
 </div>
