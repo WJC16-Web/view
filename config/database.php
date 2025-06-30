@@ -3,8 +3,8 @@
 class Database {
     private $host = 'localhost';
     private $db_name = 'view';
-    private $username = 'root';  // AutoSet 기본 설정
-    private $password = 'autoset';      // AutoSet 기본 설정
+    private $username = 'beautyapp';  // 새로 생성한 사용자
+    private $password = 'autoset123';      // 새 비밀번호
     private $charset = 'utf8mb4';
     public $conn;
 
