@@ -1,6 +1,239 @@
     </main>
     <!-- 메인 컨텐츠 끝 -->
     
+    <!-- 하단 네비게이션 -->
+    <nav class="bottom-nav">
+        <?php
+        $current_page = basename($_SERVER['PHP_SELF'], '.php');
+        $current_user = getCurrentUser();
+        ?>
+        
+        <a href="<?php echo BASE_URL; ?>/" class="nav-item <?php echo ($current_page === 'index') ? 'active' : ''; ?>">
+            <i class="fas fa-home"></i>
+            <span>홈</span>
+        </a>
+        
+        <a href="<?php echo BASE_URL; ?>/pages/business_list.php" class="nav-item <?php echo ($current_page === 'business_list') ? 'active' : ''; ?>">
+            <i class="fas fa-search"></i>
+            <span>찾기</span>
+        </a>
+        
+        <?php if ($current_user): ?>
+            <?php if ($current_user['user_type'] === 'customer'): ?>
+                <a href="<?php echo BASE_URL; ?>/pages/customer_mypage.php?tab=reservations" class="nav-item <?php echo (strpos($_SERVER['REQUEST_URI'], 'reservation') !== false) ? 'active' : ''; ?>">
+                    <i class="fas fa-calendar-check"></i>
+                    <span>예약</span>
+                </a>
+                <a href="<?php echo BASE_URL; ?>/pages/customer_mypage.php?tab=favorites" class="nav-item <?php echo (strpos($_SERVER['REQUEST_URI'], 'favorite') !== false) ? 'active' : ''; ?>">
+                    <i class="fas fa-heart"></i>
+                    <span>즐겨찾기</span>
+                </a>
+                <a href="<?php echo BASE_URL; ?>/pages/customer_mypage.php" class="nav-item <?php echo ($current_page === 'customer_mypage') ? 'active' : ''; ?>">
+                    <i class="fas fa-user"></i>
+                    <span>마이</span>
+                </a>
+            <?php elseif ($current_user['user_type'] === 'business_owner'): ?>
+                <a href="<?php echo BASE_URL; ?>/pages/reservation_manage.php" class="nav-item <?php echo ($current_page === 'reservation_manage') ? 'active' : ''; ?>">
+                    <i class="fas fa-calendar-check"></i>
+                    <span>예약관리</span>
+                </a>
+                <a href="<?php echo BASE_URL; ?>/pages/business_edit.php" class="nav-item <?php echo ($current_page === 'business_edit') ? 'active' : ''; ?>">
+                    <i class="fas fa-store"></i>
+                    <span>업체관리</span>
+                </a>
+                <a href="<?php echo BASE_URL; ?>/pages/business_dashboard.php" class="nav-item <?php echo ($current_page === 'business_dashboard') ? 'active' : ''; ?>">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>대시보드</span>
+                </a>
+            <?php elseif ($current_user['user_type'] === 'teacher'): ?>
+                <a href="<?php echo BASE_URL; ?>/pages/teacher_mypage.php?tab=schedule" class="nav-item <?php echo (strpos($_SERVER['REQUEST_URI'], 'schedule') !== false) ? 'active' : ''; ?>">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>스케줄</span>
+                </a>
+                <a href="<?php echo BASE_URL; ?>/pages/teacher_mypage.php?tab=reservations" class="nav-item <?php echo (strpos($_SERVER['REQUEST_URI'], 'reservation') !== false) ? 'active' : ''; ?>">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>예약현황</span>
+                </a>
+                <a href="<?php echo BASE_URL; ?>/pages/teacher_mypage.php" class="nav-item <?php echo ($current_page === 'teacher_mypage') ? 'active' : ''; ?>">
+                    <i class="fas fa-user-md"></i>
+                    <span>마이</span>
+                </a>
+            <?php elseif ($current_user['user_type'] === 'admin'): ?>
+                <a href="<?php echo BASE_URL; ?>/pages/admin_user_manage.php" class="nav-item <?php echo ($current_page === 'admin_user_manage') ? 'active' : ''; ?>">
+                    <i class="fas fa-users"></i>
+                    <span>회원관리</span>
+                </a>
+                <a href="<?php echo BASE_URL; ?>/pages/admin_business_manage.php" class="nav-item <?php echo ($current_page === 'admin_business_manage') ? 'active' : ''; ?>">
+                    <i class="fas fa-building"></i>
+                    <span>업체관리</span>
+                </a>
+                <a href="<?php echo BASE_URL; ?>/pages/admin_dashboard.php" class="nav-item <?php echo ($current_page === 'admin_dashboard') ? 'active' : ''; ?>">
+                    <i class="fas fa-cogs"></i>
+                    <span>관리자</span>
+                </a>
+            <?php endif; ?>
+        <?php else: ?>
+            <a href="<?php echo BASE_URL; ?>/pages/register.php" class="nav-item <?php echo ($current_page === 'register') ? 'active' : ''; ?>">
+                <i class="fas fa-user-plus"></i>
+                <span>회원가입</span>
+            </a>
+            <a href="<?php echo BASE_URL; ?>/pages/login.php" class="nav-item <?php echo ($current_page === 'login') ? 'active' : ''; ?>">
+                <i class="fas fa-sign-in-alt"></i>
+                <span>로그인</span>
+            </a>
+        <?php endif; ?>
+    </nav>
+
+    <!-- PWA 서비스 워커 등록 -->
+    <script>
+        // 서비스 워커 등록 (PWA)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('<?php echo BASE_URL; ?>/sw.js')
+                    .then(function(registration) {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch(function(registrationError) {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+
+        // 앱 설치 프롬프트
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            deferredPrompt = e;
+            // 설치 버튼 표시 로직 추가 가능
+        });
+
+        // 모바일 뷰포트 높이 조정 (iOS Safari 대응)
+        function setViewportHeight() {
+            let vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+        }
+        
+        setViewportHeight();
+        window.addEventListener('resize', setViewportHeight);
+        window.addEventListener('orientationchange', setViewportHeight);
+
+        // 터치 피드백
+        document.addEventListener('touchstart', function(e) {
+            if (e.target.classList.contains('btn') || 
+                e.target.classList.contains('nav-item') || 
+                e.target.classList.contains('list-item') ||
+                e.target.closest('.btn') ||
+                e.target.closest('.nav-item') ||
+                e.target.closest('.list-item')) {
+                e.target.style.opacity = '0.7';
+            }
+        });
+
+        document.addEventListener('touchend', function(e) {
+            if (e.target.classList.contains('btn') || 
+                e.target.classList.contains('nav-item') || 
+                e.target.classList.contains('list-item') ||
+                e.target.closest('.btn') ||
+                e.target.closest('.nav-item') ||
+                e.target.closest('.list-item')) {
+                setTimeout(() => {
+                    e.target.style.opacity = '';
+                }, 150);
+            }
+        });
+
+        // 모바일 키보드 대응
+        let initialViewportHeight = window.innerHeight;
+        window.addEventListener('resize', function() {
+            if (window.innerHeight < initialViewportHeight * 0.75) {
+                // 키보드가 올라왔을 때
+                document.body.classList.add('keyboard-open');
+            } else {
+                // 키보드가 내려갔을 때
+                document.body.classList.remove('keyboard-open');
+            }
+        });
+
+        // 스크롤 끝 감지 (무한 스크롤 등에 활용)
+        let isScrolling = false;
+        window.addEventListener('scroll', function() {
+            isScrolling = true;
+            
+            if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1000) {
+                // 페이지 하단 근처에 도달했을 때의 로직
+                // 무한 스크롤 등 구현 가능
+            }
+        });
+
+        // 스크롤 최적화
+        setInterval(function() {
+            if (isScrolling) {
+                isScrolling = false;
+                // 스크롤 관련 처리
+            }
+        }, 100);
+
+        // 뒤로가기 제스처 (Android)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' || e.keyCode === 27) {
+                // ESC 키 또는 Android 뒤로가기
+                if (document.querySelector('.modal-overlay')) {
+                    document.querySelector('.modal-overlay').remove();
+                } else if (window.history.length > 1) {
+                    history.back();
+                }
+            }
+        });
+    </script>
+
+    <style>
+        /* 키보드 오픈 시 스타일 조정 */
+        .keyboard-open .bottom-nav {
+            display: none;
+        }
+        
+        .keyboard-open body {
+            padding-bottom: 0;
+        }
+
+        /* 뷰포트 높이 CSS 변수 사용 */
+        .full-height {
+            height: calc(var(--vh, 1vh) * 100);
+        }
+
+        /* 터치 피드백 개선 */
+        .btn:active,
+        .nav-item:active,
+        .list-item:active {
+            transform: scale(0.98);
+            transition: transform 0.1s ease;
+        }
+
+        /* 스크롤바 숨기기 (모바일 앱 느낌) */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+        
+        * {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* iOS 스타일 바운스 스크롤 */
+        body {
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* 텍스트 선택 방지 (앱 느낌) */
+        .nav-item,
+        .btn,
+        .header-icon {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+    </style>
+
     <!-- 푸터 시작 -->
     <footer class="footer">
         <div class="container">

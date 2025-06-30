@@ -3,8 +3,7 @@ $page_title = '로그인 - 뷰티북';
 require_once '../includes/header.php';
 
 // 이미 로그인된 경우 리다이렉트
-if (isLoggedIn()) {
-    $user = getCurrentUser();
+if ($user = getCurrentUser()) {
     switch ($user['user_type']) {
         case 'customer':
             redirect('/view/pages/customer_mypage.php');
@@ -64,13 +63,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         redirect('/view/pages/customer_mypage.php', '환영합니다!');
                         break;
                     case 'business_owner':
-                        redirect('/view/pages/business_dashboard.php', '관리자님 환영합니다!');
+                        redirect('/view/pages/business_dashboard.php', '관리자로 환영합니다!');
                         break;
                     case 'teacher':
-                        redirect('/view/pages/teacher_mypage.php', '선생님 환영합니다!');
+                        redirect('/view/pages/teacher_mypage.php', '선생님으로 환영합니다!');
                         break;
                     case 'admin':
-                        redirect('/view/pages/admin_dashboard.php', '관리자님 환영합니다!');
+                        redirect('/view/pages/admin_dashboard.php', '관리자로 환영합니다!');
                         break;
                     default:
                         redirect('/view/', '로그인되었습니다.');
@@ -78,29 +77,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $error_message = '이메일 또는 비밀번호가 일치하지 않습니다.';
             }
-        } catch (Exception $e) {
-            $error_message = '로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
+        } catch (PDOException $e) {
+            error_log("Login error: " . $e->getMessage());
+            $error_message = '로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
         }
     }
 }
 ?>
 
 <style>
+/* 로그인 페이지 전용 스타일 */
 .login-container {
-    min-height: calc(100vh - 200px);
+    min-height: calc(100vh - 60px);
     display: flex;
-    align-items: center;
+    flex-direction: column;
     justify-content: center;
-    padding: 40px 0;
+    padding: 40px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-.login-form {
+.login-card {
     background: white;
-    padding: 50px;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    border-radius: 24px;
+    padding: 40px 30px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+    margin: 0 auto;
     width: 100%;
-    max-width: 450px;
+    max-width: 400px;
+    position: relative;
+    overflow: hidden;
+}
+
+.login-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #ff4757 0%, #ff6b7a 100%);
 }
 
 .login-header {
@@ -108,340 +123,613 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     margin-bottom: 40px;
 }
 
-.login-header h1 {
-    color: #2c3e50;
+.login-icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #ff4757 0%, #ff6b7a 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
     font-size: 32px;
-    margin-bottom: 10px;
+    margin: 0 auto 20px;
+    box-shadow: 0 8px 20px rgba(255, 71, 87, 0.3);
 }
 
-.login-header p {
-    color: #666;
+.login-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.login-subtitle {
     font-size: 16px;
+    color: #666;
 }
 
 .form-group {
-    margin-bottom: 25px;
+    margin-bottom: 24px;
+    position: relative;
 }
 
 .form-label {
     display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
     margin-bottom: 8px;
-    color: #2c3e50;
-    font-weight: 500;
+}
+
+.form-input-wrapper {
+    position: relative;
 }
 
 .form-input {
     width: 100%;
-    padding: 15px;
-    border: 2px solid #ddd;
-    border-radius: 8px;
+    padding: 16px 20px 16px 50px;
+    border: 2px solid #e9ecef;
+    border-radius: 16px;
     font-size: 16px;
-    transition: border-color 0.3s;
+    background: #f8f9fa;
+    transition: all 0.3s;
+    -webkit-appearance: none;
 }
 
 .form-input:focus {
     outline: none;
     border-color: #ff4757;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(255, 71, 87, 0.1);
 }
 
-.form-checkbox {
+.form-icon {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #999;
+    font-size: 18px;
+    transition: color 0.3s;
+}
+
+.form-input:focus + .form-icon {
+    color: #ff4757;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.3s;
+}
+
+.password-toggle:hover {
+    color: #ff4757;
+}
+
+.checkbox-group {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 30px;
+    justify-content: space-between;
+    margin: 24px 0;
 }
 
-.form-checkbox input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
+.checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.form-checkbox label {
-    color: #666;
-    font-size: 14px;
+.checkbox {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    background: white;
     cursor: pointer;
+    position: relative;
+    transition: all 0.3s;
+}
+
+.checkbox input {
+    opacity: 0;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+}
+
+.checkbox input:checked + .checkmark {
+    background: #ff4757;
+    border-color: #ff4757;
+}
+
+.checkbox input:checked + .checkmark::after {
+    display: block;
+}
+
+.checkmark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 16px;
+    width: 16px;
+    background: transparent;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    transition: all 0.3s;
+}
+
+.checkmark::after {
+    content: "";
+    position: absolute;
+    display: none;
+    left: 4px;
+    top: 1px;
+    width: 6px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.checkbox-label {
+    font-size: 14px;
+    color: #666;
+    cursor: pointer;
+    user-select: none;
+}
+
+.forgot-password {
+    color: #ff4757;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: opacity 0.3s;
+}
+
+.forgot-password:hover {
+    opacity: 0.8;
+    text-decoration: underline;
 }
 
 .login-btn {
     width: 100%;
-    padding: 15px;
-    background: #ff4757;
+    padding: 18px;
+    background: linear-gradient(135deg, #ff4757 0%, #ff6b7a 100%);
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: 16px;
     font-size: 18px;
-    font-weight: bold;
+    font-weight: 600;
     cursor: pointer;
-    transition: background 0.3s;
-    margin-bottom: 20px;
+    transition: all 0.3s;
+    box-shadow: 0 4px 15px rgba(255, 71, 87, 0.3);
+    margin-bottom: 24px;
 }
 
 .login-btn:hover {
-    background: #ff3742;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(255, 71, 87, 0.4);
+}
+
+.login-btn:active {
+    transform: translateY(0);
 }
 
 .login-btn:disabled {
-    background: #bdc3c7;
+    opacity: 0.6;
     cursor: not-allowed;
-}
-
-.form-links {
-    text-align: center;
-    padding-top: 20px;
-    border-top: 1px solid #eee;
-}
-
-.form-links a {
-    color: #ff4757;
-    text-decoration: none;
-    margin: 0 10px;
-}
-
-.form-links a:hover {
-    text-decoration: underline;
+    transform: none;
 }
 
 .social-login {
-    margin-top: 30px;
-    padding-top: 30px;
-    border-top: 1px solid #eee;
+    text-align: center;
+    margin: 30px 0;
 }
 
-.social-login-title {
-    text-align: center;
-    margin-bottom: 20px;
-    color: #666;
+.social-title {
     font-size: 14px;
+    color: #999;
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.social-title::before,
+.social-title::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 45%;
+    height: 1px;
+    background: #ddd;
+}
+
+.social-title::before {
+    left: 0;
+}
+
+.social-title::after {
+    right: 0;
 }
 
 .social-buttons {
     display: flex;
-    gap: 10px;
+    gap: 15px;
+    justify-content: center;
 }
 
 .social-btn {
-    flex: 1;
-    padding: 12px;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.3s;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 2px solid #e9ecef;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     text-decoration: none;
-    text-align: center;
+    font-size: 20px;
+    transition: all 0.3s;
 }
 
 .social-btn.kakao {
-    background: #fee500;
-    color: #3c1e1e;
+    background: #FEE500;
+    border-color: #FEE500;
+    color: #3C1E1E;
 }
 
 .social-btn.naver {
-    background: #03c75a;
+    background: #03C75A;
+    border-color: #03C75A;
     color: white;
 }
 
 .social-btn.google {
-    background: #4285f4;
+    background: #4285F4;
+    border-color: #4285F4;
     color: white;
 }
 
 .social-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-}
-
-.error-message {
-    background: #f8d7da;
-    color: #721c24;
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 25px;
-    border: 1px solid #f5c6cb;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
 }
 
 .register-link {
     text-align: center;
-    margin-top: 30px;
     padding: 20px;
     background: #f8f9fa;
-    border-radius: 8px;
+    border-radius: 16px;
+    margin-top: 20px;
 }
 
-.register-link p {
-    margin-bottom: 15px;
+.register-text {
+    font-size: 14px;
     color: #666;
-}
-
-.register-buttons {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
+    margin-bottom: 8px;
 }
 
 .register-btn {
-    flex: 1;
-    min-width: 120px;
-    padding: 10px 20px;
+    color: #ff4757;
     text-decoration: none;
-    text-align: center;
-    border-radius: 6px;
-    font-size: 14px;
-    transition: all 0.3s;
-}
-
-.register-btn.customer {
-    background: #ff4757;
-    color: white;
-}
-
-.register-btn.business {
-    background: #2c3e50;
-    color: white;
+    font-weight: 600;
+    font-size: 16px;
 }
 
 .register-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+    text-decoration: underline;
+}
+
+/* 로딩 상태 */
+.loading {
+    display: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #ffffff;
+    border-top: 2px solid transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 8px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 에러 메시지 */
+.error-message {
+    background: #ffe6e6;
+    color: #d63031;
+    padding: 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    margin-bottom: 20px;
+    border: 1px solid #ff7675;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.error-icon {
+    font-size: 16px;
 }
 
 /* 반응형 */
-@media (max-width: 768px) {
-    .login-form {
+@media (max-width: 480px) {
+    .login-container {
+        padding: 20px 15px;
+    }
+    
+    .login-card {
         padding: 30px 20px;
-        margin: 20px;
+        border-radius: 20px;
     }
     
-    .social-buttons {
-        flex-direction: column;
+    .login-title {
+        font-size: 24px;
+    }
+}
+
+/* 다크모드 지원 */
+@media (prefers-color-scheme: dark) {
+    .login-card {
+        background: #2d2d2d;
+        color: white;
     }
     
-    .register-buttons {
-        flex-direction: column;
+    .login-title {
+        color: white;
+    }
+    
+    .form-input {
+        background: #404040;
+        border-color: #555;
+        color: white;
+    }
+    
+    .form-input:focus {
+        background: #4a4a4a;
+        border-color: #ff4757;
+    }
+    
+    .register-link {
+        background: #404040;
     }
 }
 </style>
 
-<div class="container">
-    <div class="login-container">
-        <form class="login-form" method="POST">
-            <div class="login-header">
-                <h1><i class="fas fa-spa"></i> 뷰티북</h1>
-                <p>예약의 새로운 경험을 시작해보세요</p>
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <div class="login-icon">
+                <i class="fas fa-user"></i>
             </div>
-            
-            <?php if ($error_message): ?>
-                <div class="error-message">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <?php echo htmlspecialchars($error_message); ?>
+            <h1 class="login-title">환영합니다!</h1>
+            <p class="login-subtitle">뷰티북에 로그인하세요</p>
+        </div>
+
+        <?php if ($error_message): ?>
+            <div class="error-message">
+                <i class="fas fa-exclamation-circle error-icon"></i>
+                <?php echo htmlspecialchars($error_message); ?>
+            </div>
+        <?php endif; ?>
+
+        <form method="POST" id="loginForm">
+            <div class="form-group">
+                <label for="email" class="form-label">이메일</label>
+                <div class="form-input-wrapper">
+                    <input type="email" id="email" name="email" class="form-input" 
+                           placeholder="이메일을 입력하세요"
+                           value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>"
+                           required>
+                    <i class="fas fa-envelope form-icon"></i>
                 </div>
-            <?php endif; ?>
-            
+            </div>
+
             <div class="form-group">
-                <label for="email" class="form-label">
-                    <i class="fas fa-envelope"></i> 이메일
-                </label>
-                <input type="email" id="email" name="email" class="form-input" 
-                       placeholder="이메일을 입력해주세요" 
-                       value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>" required>
+                <label for="password" class="form-label">비밀번호</label>
+                <div class="form-input-wrapper">
+                    <input type="password" id="password" name="password" class="form-input" 
+                           placeholder="비밀번호를 입력하세요" required>
+                    <i class="fas fa-lock form-icon"></i>
+                    <button type="button" class="password-toggle" onclick="togglePassword()">
+                        <i class="fas fa-eye" id="toggleIcon"></i>
+                    </button>
+                </div>
             </div>
-            
-            <div class="form-group">
-                <label for="password" class="form-label">
-                    <i class="fas fa-lock"></i> 비밀번호
-                </label>
-                <input type="password" id="password" name="password" class="form-input" 
-                       placeholder="비밀번호를 입력해주세요" required>
+
+            <div class="checkbox-group">
+                <div class="checkbox-wrapper">
+                    <div class="checkbox">
+                        <input type="checkbox" id="remember_me" name="remember_me">
+                        <span class="checkmark"></span>
+                    </div>
+                    <label for="remember_me" class="checkbox-label">로그인 상태 유지</label>
+                </div>
+                <a href="#" class="forgot-password">비밀번호 찾기</a>
             </div>
-            
-            <div class="form-checkbox">
-                <input type="checkbox" id="remember_me" name="remember_me">
-                <label for="remember_me">로그인 상태 유지</label>
-            </div>
-            
-            <button type="submit" class="login-btn">
-                <i class="fas fa-sign-in-alt"></i> 로그인
+
+            <button type="submit" class="login-btn" id="loginBtn">
+                <span class="loading" id="loading"></span>
+                <span id="btnText">로그인</span>
             </button>
-            
-            <div class="form-links">
-                <a href="<?php echo BASE_URL; ?>/pages/find_password.php">
-                    <i class="fas fa-key"></i> 비밀번호 찾기
-                </a>
-                |
-                <a href="<?php echo BASE_URL; ?>/pages/register.php">
-                    <i class="fas fa-user-plus"></i> 회원가입
-                </a>
-            </div>
-            
-            <!-- 소셜 로그인 -->
-            <div class="social-login">
-                <div class="social-login-title">
-                    <i class="fas fa-share-alt"></i> 간편 로그인
-                </div>
-                <div class="social-buttons">
-                    <a href="#" class="social-btn kakao" onclick="alert('카카오 로그인 준비 중입니다.')">
-                        <i class="fab fa-kakao"></i> 카카오
-                    </a>
-                    <a href="#" class="social-btn naver" onclick="alert('네이버 로그인 준비 중입니다.')">
-                        <strong>N</strong> 네이버
-                    </a>
-                    <a href="#" class="social-btn google" onclick="alert('구글 로그인 준비 중입니다.')">
-                        <i class="fab fa-google"></i> 구글
-                    </a>
-                </div>
-            </div>
-            
-            <!-- 회원가입 안내 -->
-            <div class="register-link">
-                <p><strong>아직 뷰티북 회원이 아니신가요?</strong></p>
-                <div class="register-buttons">
-                    <a href="<?php echo BASE_URL; ?>/pages/register.php?type=customer" class="register-btn customer">
-                        <i class="fas fa-user"></i> 고객 회원가입
-                    </a>
-                    <a href="<?php echo BASE_URL; ?>/pages/register.php?type=business" class="register-btn business">
-                        <i class="fas fa-store"></i> 업체 회원가입
-                    </a>
-                </div>
-            </div>
         </form>
+
+        <!-- 소셜 로그인 -->
+        <div class="social-login">
+            <div class="social-title">간편 로그인</div>
+            <div class="social-buttons">
+                <a href="#" class="social-btn kakao" onclick="loginWithKakao()">
+                    <i class="fas fa-comment"></i>
+                </a>
+                <a href="#" class="social-btn naver" onclick="loginWithNaver()">
+                    <span style="font-weight: bold;">N</span>
+                </a>
+                <a href="#" class="social-btn google" onclick="loginWithGoogle()">
+                    <i class="fab fa-google"></i>
+                </a>
+            </div>
+        </div>
+
+        <!-- 회원가입 링크 -->
+        <div class="register-link">
+            <div class="register-text">아직 계정이 없으신가요?</div>
+            <a href="register.php" class="register-btn">회원가입하기</a>
+        </div>
     </div>
 </div>
 
 <script>
 $(document).ready(function() {
-    // 엔터키로 로그인
-    $('.form-input').keypress(function(e) {
-        if (e.which === 13) {
-            $('.login-btn').click();
-        }
-    });
-    
-    // 폼 유효성 검사
-    $('form').submit(function(e) {
-        var email = $('#email').val().trim();
-        var password = $('#password').val();
+    // 폼 제출 처리
+    $('#loginForm').submit(function(e) {
+        const email = $('#email').val().trim();
+        const password = $('#password').val();
         
         if (!email || !password) {
-            alert('이메일과 비밀번호를 모두 입력해주세요.');
             e.preventDefault();
+            showError('이메일과 비밀번호를 모두 입력해주세요.');
             return false;
         }
         
         if (!isValidEmail(email)) {
-            alert('올바른 이메일 형식이 아닙니다.');
-            $('#email').focus();
             e.preventDefault();
+            showError('올바른 이메일 형식이 아닙니다.');
+            $('#email').focus();
             return false;
         }
         
-        // 로그인 버튼 비활성화
-        $('.login-btn').prop('disabled', true).text('로그인 중...');
+        // 로딩 시작
+        showLoading(true);
     });
     
-    // 이메일 유효성 검사 함수
-    function isValidEmail(email) {
-        var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(email);
+    // 입력 필드 실시간 검증
+    $('#email').on('input', function() {
+        const email = $(this).val().trim();
+        if (email && !isValidEmail(email)) {
+            $(this).css('border-color', '#dc3545');
+        } else {
+            $(this).css('border-color', '');
+        }
+    });
+    
+    // 비밀번호 필드 엔터키 처리
+    $('#password').keypress(function(e) {
+        if (e.which === 13) {
+            $('#loginForm').submit();
+        }
+    });
+    
+    // 자동 포커스
+    setTimeout(() => {
+        $('#email').focus();
+    }, 500);
+});
+
+// 비밀번호 표시/숨김 토글
+function togglePassword() {
+    const passwordField = document.getElementById('password');
+    const toggleIcon = document.getElementById('toggleIcon');
+    
+    if (passwordField.type === 'password') {
+        passwordField.type = 'text';
+        toggleIcon.className = 'fas fa-eye-slash';
+    } else {
+        passwordField.type = 'password';
+        toggleIcon.className = 'fas fa-eye';
+    }
+}
+
+// 이메일 유효성 검사
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+// 에러 메시지 표시
+function showError(message) {
+    const existingError = document.querySelector('.error-message');
+    if (existingError) {
+        existingError.remove();
+    }
+    
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.innerHTML = `
+        <i class="fas fa-exclamation-circle error-icon"></i>
+        ${message}
+    `;
+    
+    const form = document.getElementById('loginForm');
+    form.parentNode.insertBefore(errorDiv, form);
+    
+    // 3초 후 자동 제거
+    setTimeout(() => {
+        errorDiv.remove();
+    }, 5000);
+}
+
+// 로딩 상태 표시
+function showLoading(show) {
+    const loading = document.getElementById('loading');
+    const btnText = document.getElementById('btnText');
+    const loginBtn = document.getElementById('loginBtn');
+    
+    if (show) {
+        loading.style.display = 'inline-block';
+        btnText.textContent = '로그인 중...';
+        loginBtn.disabled = true;
+    } else {
+        loading.style.display = 'none';
+        btnText.textContent = '로그인';
+        loginBtn.disabled = false;
+    }
+}
+
+// 소셜 로그인 함수들 (추후 구현)
+function loginWithKakao() {
+    alert('카카오 로그인 기능 준비 중입니다.');
+}
+
+function loginWithNaver() {
+    alert('네이버 로그인 기능 준비 중입니다.');
+}
+
+function loginWithGoogle() {
+    alert('구글 로그인 기능 준비 중입니다.');
+}
+
+// 터치 피드백
+document.addEventListener('touchstart', function(e) {
+    if (e.target.classList.contains('login-btn') || 
+        e.target.classList.contains('social-btn') ||
+        e.target.closest('.login-btn') ||
+        e.target.closest('.social-btn')) {
+        e.target.style.opacity = '0.8';
+    }
+});
+
+document.addEventListener('touchend', function(e) {
+    if (e.target.classList.contains('login-btn') || 
+        e.target.classList.contains('social-btn') ||
+        e.target.closest('.login-btn') ||
+        e.target.closest('.social-btn')) {
+        setTimeout(() => {
+            e.target.style.opacity = '';
+        }, 150);
     }
 });
 </script>

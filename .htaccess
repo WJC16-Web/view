@@ -1,0 +1,127 @@
+# 뷰티북 프로젝트 Apache 설정
+# UTF-8 인코딩 및 보안 설정
+
+# UTF-8 인코딩 강제 설정
+AddDefaultCharset UTF-8
+DefaultLanguage ko-KR
+
+# 문자 인코딩 헤더 설정
+<IfModule mod_headers.c>
+    Header always set Content-Type "text/html; charset=UTF-8"
+    
+    # PHP 파일에 대한 UTF-8 설정
+    <FilesMatch "\.(php)$">
+        Header set Content-Type "text/html; charset=UTF-8"
+    </FilesMatch>
+    
+    # CSS 파일에 대한 UTF-8 설정
+    <FilesMatch "\.(css)$">
+        Header set Content-Type "text/css; charset=UTF-8"
+    </FilesMatch>
+    
+    # JavaScript 파일에 대한 UTF-8 설정
+    <FilesMatch "\.(js)$">
+        Header set Content-Type "application/javascript; charset=UTF-8"
+    </FilesMatch>
+</IfModule>
+
+# PHP 설정 (가능한 경우)
+<IfModule mod_php.c>
+    php_value default_charset "UTF-8"
+    php_value internal_encoding "UTF-8"
+    php_value input_encoding "UTF-8"
+    php_value output_encoding "UTF-8"
+    php_value mbstring.internal_encoding "UTF-8"
+    php_value mbstring.http_input "UTF-8"
+    php_value mbstring.http_output "UTF-8"
+    php_value mbstring.encoding_translation "On"
+    php_value mbstring.detect_order "UTF-8,EUC-KR,CP949"
+</IfModule>
+
+# URL 리라이팅 (클린 URL)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # 메인 페이지 리다이렉트
+    RewriteRule ^$ index.php [L]
+    
+    # 파일이 존재하지 않는 경우 적절한 처리
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^([^/]+)/?$ pages/$1.php [L]
+</IfModule>
+
+# MIME 타입 설정
+<IfModule mod_mime.c>
+    AddType text/html .php
+    AddType text/css .css
+    AddType application/javascript .js
+    AddType application/json .json
+    
+    # 한글 폰트 파일 MIME 타입
+    AddType font/woff .woff
+    AddType font/woff2 .woff2
+    AddType font/truetype .ttf
+    AddType font/opentype .otf
+</IfModule>
+
+# 압축 설정 (성능 향상)
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript text/javascript application/json text/xml
+</IfModule>
+
+# 보안 설정
+<IfModule mod_headers.c>
+    # XSS 보호
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # 콘텐츠 타입 스니핑 방지
+    Header always set X-Content-Type-Options "nosniff"
+    
+    # 클릭재킹 방지
+    Header always set X-Frame-Options "SAMEORIGIN"
+    
+    # HTTPS 강제 (필요시 주석 해제)
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
+# 파일 접근 제한
+<Files ".htaccess">
+    Order allow,deny
+    Deny from all
+</Files>
+
+<Files "*.backup.*">
+    Order allow,deny
+    Deny from all
+</Files>
+
+<Files "*.log">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# 에러 페이지 설정 (선택사항)
+ErrorDocument 404 /view/pages/error_404.php
+ErrorDocument 500 /view/pages/error_500.php
+
+# 캐시 설정 (성능 향상)
+<IfModule mod_expires.c>
+    ExpiresActive On
+    
+    # 이미지 파일
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    
+    # CSS, JavaScript
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+    
+    # 폰트 파일
+    ExpiresByType font/woff "access plus 1 month"
+    ExpiresByType font/woff2 "access plus 1 month"
+    ExpiresByType font/truetype "access plus 1 month"
+    ExpiresByType font/opentype "access plus 1 month"
+</IfModule>
